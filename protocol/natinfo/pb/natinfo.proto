@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package natinfo.pb;
+
+enum MsgType {
+  TestNatType = 0;
+  PortNegotiation = 1;
+  PortNegotiationResponse = 2;
+  ServerPortChangeTest = 3;
+  ServerPortChangeTestResponse = 4;
+  NatTypeResult = 5;
+}
+
+enum NATType {
+  Unknown = 0;
+  None = 1;
+  FullOrRestrictedCone = 2;
+  PortRestrictedCone = 3;
+  Symmetric = 4;
+}
+
+message Message {
+  MsgType type = 1;
+  string identity = 2;
+  bytes data = 3;
+  string error_info = 4;
+  string src_public_addr = 5;
+}
+
+enum PortChangeType {
+  Linear = 0;
+  Random = 1;
+  UnKnownRule = 2;
+}
+
+
+message NATTypeInfo {
+  NATType nat_type = 1;
+  bool port_influenced_by_protocol = 2;
+  PortChangeType udp_port_change_rule = 3;
+}
