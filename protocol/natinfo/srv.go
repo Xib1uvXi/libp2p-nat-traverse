@@ -50,16 +50,33 @@ func (t *NATTypeObserServer) handleNewStream(s network.Stream) {
 		return
 	}
 
+	var natInfo *pb.NATTypeInfo
+
 	if newAddr.String() != oldAddr.String() {
 		// nat type is symmetric
-		if err := t.symmetricNatType(oldAddr, newAddr, writer); err != nil {
-			logger.Errorf("failed to handle symmetric nat type: %v", err)
+		natInfo, err = t.symmetricNatType(oldAddr, newAddr)
+		if err != nil {
+			logger.Errorf("failed to check symmetric nat type: %v", err)
 			s.Reset()
 			return
 		}
+	} else {
+		// nat type is not symmetric
+		natInfo, err = t.coneCheck(oldAddr)
+		if err != nil {
+			logger.Errorf("failed to check cone nat type: %v", err)
+			s.Reset()
+			return
+		}
+	}
 
+	if err := t.sendResult(natInfo, writer); err != nil {
+		logger.Errorf("failed to send nat type result: %v", err)
+		s.Reset()
 		return
 	}
+
+	logger.Debugf("send nat type result: %s, PeerID: %s", natInfo.NatType, remotePeerID.String())
 }
 
 // handle req msg, response with PortNegotiation port
@@ -108,24 +125,17 @@ func (t *NATTypeObserServer) portNegotiation(reader pbio.ReadCloser, writer pbio
 	}
 
 	// block until client connect, timeout 5s
-	select {
-	case err := <-recorder.ErrC:
-		logger.Errorf("port negotiation error: %v", err)
+	remoteAddr, err := recorder.Await()
+	if err != nil {
+		logger.Errorf("failed to await port negotiation: %v", err)
 		return nil, err
-
-	case <-time.After(5 * time.Second):
-		logger.Errorf("get port negotiation resptimeout")
-		return nil, fmt.Errorf("get port negotiation resp timeout")
-
-	case <-recorder.DoneC:
-		logger.Debugf("port negotiation done")
 	}
 
-	return recorder.RemoteAddr, nil
+	return remoteAddr, nil
 }
 
 // handle symmetric nat type
-func (t *NATTypeObserServer) symmetricNatType(oldAddr, newAddr net.Addr, writer pbio.WriteCloser) error {
+func (t *NATTypeObserServer) symmetricNatType(oldAddr, newAddr net.Addr) (*pb.NATTypeInfo, error) {
 	var changeRule pb.PortChangeType
 	// observe port changes
 	// changes range
@@ -141,6 +151,59 @@ func (t *NATTypeObserServer) symmetricNatType(oldAddr, newAddr net.Addr, writer 
 		UdpPortChangeRule: changeRule,
 	}
 
+	return natInfo, nil
+}
+
+// check port restricted nat
+func (t *NATTypeObserServer) coneCheck(raddr net.Addr) (*pb.NATTypeInfo, error) {
+	// random listen a port
+	randomPort := newRandomPort()
+	wrapUDP, err := netutil.NewWrapUDPConn(fmt.Sprintf("%s:%d", t.PublicIP, randomPort))
+	if err != nil {
+		logger.Errorf("failed to create wrap udp server: %v", err)
+		return nil, err
+	}
+
+	// set handler
+	checker := NewPortRestrictedChecker()
+	wrapUDP.SetConnHandler(checker.PortRestrictedHandler)
+
+	if err := wrapUDP.Start(); err != nil {
+		logger.Errorf("failed to start wrap udp server: %v", err)
+		return nil, err
+	}
+	defer wrapUDP.Close()
+
+	// send Unreliable udp Message to client
+	data, err := proto.Marshal(&pb.Message{Type: pb.MsgType_ServerPortChangeTest})
+	if err != nil {
+		logger.Errorf("failed to marshal port change test msg: %v", err)
+		return nil, err
+	}
+
+	// send unreliable udp msg 2 times
+	_ = wrapUDP.SendUnreliableUDPMessage(data, raddr)
+	_ = wrapUDP.SendUnreliableUDPMessage(data, raddr)
+
+	// block until client resp, timeout 2s
+	select {
+	case err := <-checker.ErrC:
+		logger.Errorf("port restricted check error: %v", err)
+		return nil, err
+	case <-time.After(2 * time.Second):
+		// port restricted
+		return &pb.NATTypeInfo{
+			NatType: pb.NATType_PortRestrictedCone,
+		}, nil
+	case <-checker.DoneC:
+		// full or restricted
+		return &pb.NATTypeInfo{
+			NatType: pb.NATType_FullOrRestrictedCone,
+		}, nil
+	}
+}
+
+func (t *NATTypeObserServer) sendResult(natInfo *pb.NATTypeInfo, writer pbio.WriteCloser) error {
 	data, err := proto.Marshal(natInfo)
 	if err != nil {
 		logger.Errorf("failed to marshal nat info: %v", err)

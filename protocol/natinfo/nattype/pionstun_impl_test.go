@@ -6,7 +6,7 @@ import (
 )
 
 func TestPionStunImpl_GetNATType(t *testing.T) {
-	t.Skip("Skip this test because it will fail in CI/CD environment")
+	t.Skip("Skip test for PionStunImpl_GetNATType")
 	impl := &PionStunImpl{}
 
 	result, err := impl.GetNATType()

@@ -6,7 +6,9 @@ type GoStunImpl struct {
 }
 
 func (g *GoStunImpl) GetNATType() (NATType, error) {
-	nat, _, err := stun.NewClient().Discover()
+	clinet := stun.NewClient()
+	clinet.SetServerHost("stun.syncthing.net", 3478)
+	nat, _, err := clinet.Discover()
 	if err != nil {
 		return UnKnown, err
 	}

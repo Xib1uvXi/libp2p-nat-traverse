@@ -16,5 +16,5 @@ func Test_multiAddrToUDPAddr(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	t.Log(udpAddr.String())
+	assert.Equal(t, "127.0.0.1:1234", udpAddr.String())
 }

@@ -6,18 +6,8 @@ import (
 	"testing"
 )
 
-func TestGoStunImpl_GetNATType(t *testing.T) {
-	t.Skip("Skip this test because it will fail in CI/CD environment")
-	impl := &GoStunImpl{}
-
-	result, err := impl.GetNATType()
-	assert.NoError(t, err)
-
-	assert.Equal(t, Symmetric, result)
-}
-
 func TestGoStunImpl_GetNATType2(t *testing.T) {
-	t.Skip("Skip this test because it will fail in CI/CD environment")
+	t.Skip("skip test")
 	clinet := stun.NewClient()
 	//clinet.SetServerHost("stun.miwifi.com", 3478)
 	//clinet.SetServerHost("stun.miwifi.com", 3478)
@@ -27,4 +17,14 @@ func TestGoStunImpl_GetNATType2(t *testing.T) {
 
 	t.Logf("NAT: %v, IP: %v", nat, ip)
 
+}
+
+func TestGoStunImpl_GetNATType(t *testing.T) {
+	t.Skip("skip test")
+	impl := &GoStunImpl{}
+
+	result, err := impl.GetNATType()
+	assert.NoError(t, err)
+
+	assert.Equal(t, Symmetric, result)
 }

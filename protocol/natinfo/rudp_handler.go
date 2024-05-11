@@ -1,10 +1,11 @@
 package natinfo
 
 import (
+	"fmt"
 	"github.com/Xib1uvXi/libp2p-nat-traverse/protocol/natinfo/pb"
-	"github.com/libp2p/go-msgio/pbio"
 	"github.com/quic-go/quic-go"
 	"net"
+	"time"
 )
 
 type PortNegotiationRecorder struct {
@@ -28,7 +29,7 @@ func (p *PortNegotiationRecorder) PortNegotiationHandler(conn quic.Connection, s
 	}
 
 	if msg.GetType() != pb.MsgType_PortNegotiationResponse {
-		p.ErrC <- err
+		p.ErrC <- fmt.Errorf("PortNegotiationRecorder unexpected message type: %v", msg.GetType())
 		return err
 	}
 	p.RemoteAddr = conn.RemoteAddr()
@@ -37,13 +38,13 @@ func (p *PortNegotiationRecorder) PortNegotiationHandler(conn quic.Connection, s
 	return nil
 }
 
-// QUICReceiveMessage quic read message
-func receiveMessage(stream quic.Stream) (*pb.Message, error) {
-	r := pbio.NewDelimitedReader(stream, maxMsgSize)
-	var msg pb.Message
-
-	if err := r.ReadMsg(&msg); err != nil {
+func (p *PortNegotiationRecorder) Await() (net.Addr, error) {
+	select {
+	case <-p.DoneC:
+		return p.RemoteAddr, nil
+	case err := <-p.ErrC:
 		return nil, err
+	case <-time.After(5 * time.Second):
+		return nil, fmt.Errorf("PortNegotiationRecorder timeout")
 	}
-	return &msg, nil
 }
